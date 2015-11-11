@@ -84,6 +84,7 @@ module Fluent
     (1..REGEXP_MAX_NUM).each {|i| config_param :"replace_record_key_regexp#{i}", :string, default: nil }
 
     config_param :time_format, :string, default: nil
+    config_param :time_format_field,  :string, default: nil
     config_param :localtime, :bool, default: nil
     config_param :utc, :bool, default: nil
     config_param :time_field, :string, default: nil
@@ -129,6 +130,7 @@ module Fluent
 
     def initialize
       super
+      require 'time'
       require 'json'
       require 'google/api_client'
       require 'googleauth'
@@ -319,7 +321,12 @@ module Fluent
     end
 
     def insert(table_id_format, rows)
-      table_id = generate_table_id(table_id_format, Time.at(Fluent::Engine.now))
+      if @time_format_field.nil?
+        table_id = generate_table_id(table_id_format, Time.at(Fluent::Engine.now))
+      else
+        table_id = generate_table_id(table_id_format, Time.at(Time.parse(rows[0]['json'][@time_format_field]).to_i))
+      end
+
       res = client().execute(
         api_method: @bq.tabledata.insert_all,
         parameters: {
