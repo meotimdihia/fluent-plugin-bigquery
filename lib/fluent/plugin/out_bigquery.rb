@@ -320,7 +320,13 @@ module Fluent
       end
     end
 
-    def insert(table_id_format, rows)
+    def insert(rows)
+      table_id_format = @tables_mutex.synchronize do
+        t = @tables_queue.shift
+        @tables_queue.push t
+        t
+      end
+      
       if @time_format_field.nil?
         table_id = generate_table_id(table_id_format, Time.at(Fluent::Engine.now))
       else
@@ -394,19 +400,24 @@ module Fluent
 
     def write(chunk)
       rows = []
+      last_time = nil
       chunk.msgpack_each do |row_object|
         # TODO: row size limit
+        if !@time_format_field.nil?
+          if !last_time.nil?
+            if Time.parse(row_object['json'][@time_format_field]).to_date != last_time
+              insert(rows)
+              rows = []
+            end
+          end
+          last_time =  Time.parse(row_object['json'][@time_format_field]).to_date
+        end
+
         rows << row_object
       end
 
       # TODO: method
-
-      insert_table = @tables_mutex.synchronize do
-        t = @tables_queue.shift
-        @tables_queue.push t
-        t
-      end
-      insert(insert_table, rows)
+      insert(rows)
     end
 
     def fetch_schema
